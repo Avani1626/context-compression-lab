@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+	"os"
 )
 
 // CompressRequest is the JSON the client sends to our API.
@@ -204,12 +205,14 @@ compressedChars := utf8.RuneCountInString(compressed)
 }
 
 func main() {
-	// Connect the API route to its handler.
-	http.HandleFunc("/api/compress", compressHandler)
+    http.HandleFunc("/api/compress", compressHandler)
+    http.Handle("/", http.FileServer(http.Dir("./frontend")))
 
-	http.Handle("/", http.FileServer(http.Dir("./frontend")))
+    port := os.Getenv("PORT")
+    if port == "" {
+        port = "8080"
+    }
 
-	// Start the local web server.
-	fmt.Println("Context Compression API running at http://localhost:8080")
-	log.Fatal(http.ListenAndServe(":8080", nil))
+    fmt.Printf("Context Compression API running on port %s\n", port)
+    log.Fatal(http.ListenAndServe(":"+port, nil))
 }
