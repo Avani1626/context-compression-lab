@@ -1,0 +1,142 @@
+
+:root {
+  font-family: Inter, "Segoe UI", sans-serif;
+  color: #e8edf7;
+  background: #0b1020;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(ellipse at top, #19264a 0%, #0b1020 55%);
+}
+
+header {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 48px 24px 28px;
+}
+
+header h1 {
+  margin: 0 0 12px;
+  font-size: clamp(2rem, 5vw, 3rem);
+  letter-spacing: -1px;
+}
+
+header p {
+  margin: 0;
+  color: #aab6d0;
+  font-size: 1.05rem;
+}
+
+main {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 22px;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 24px 48px;
+}
+
+section {
+  min-width: 0;
+  padding: 24px;
+  border: 1px solid #293653;
+  border-radius: 16px;
+  background: rgba(18, 27, 49, 0.88);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.18);
+}
+
+label {
+  display: block;
+  margin: 0 0 10px;
+  color: #cbd5e8;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+textarea,
+select {
+  width: 100%;
+  margin-bottom: 20px;
+  padding: 14px;
+  border: 1px solid #344361;
+  border-radius: 10px;
+  background: #0d1528;
+  color: #e8edf7;
+  font: inherit;
+}
+
+textarea {
+  resize: vertical;
+  line-height: 1.6;
+}
+
+textarea:focus,
+select:focus {
+  outline: 2px solid #8b7cff;
+  outline-offset: 2px;
+}
+
+button {
+  width: 100%;
+  padding: 14px 18px;
+  border: 0;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #8b7cff, #5b8cff);
+  color: white;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 150ms ease, opacity 150ms ease;
+}
+
+button:hover {
+  transform: translateY(-1px);
+}
+
+button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+  transform: none;
+}
+
+h2 {
+  margin: 0 0 18px;
+  font-size: 1.2rem;
+}
+
+#result-placeholder {
+  color: #8794af;
+}
+
+#result {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  line-height: 1.7;
+}
+
+#compression-stats {
+  margin-top: 20px;
+  color: #aab6d0;
+  font-size: 0.9rem;
+}
+
+@media (max-width: 700px) {
+  main {
+    grid-template-columns: 1fr;
+  }
+
+  header {
+    padding-top: 32px;
+  }
+
+  section {
+    padding: 20px;
+  }
+}

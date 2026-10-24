@@ -1,0 +1,10 @@
+# Local API experiments; not part of the main app
+ollama-check/
+openai-check/
+
+# Local secrets and environment settings
+.env
+.env.*
+
+# Compiled Go executables
+*.exe

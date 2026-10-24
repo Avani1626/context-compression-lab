@@ -1,0 +1,43 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="style.css">
+  <title>Context Compression Lab</title>
+</head>
+<body>
+  <header>
+    <h1>Context Compression Lab</h1>
+    <p>Make long text shorter while keeping its essential meaning.</p>
+  </header>
+
+  <main>
+    <section>
+      <label for="input-text">Text to compress</label>
+      <textarea
+        id="input-text"
+        placeholder="Paste your text here..."
+        rows="10"
+      ></textarea>
+
+      <label for="compression-method">Compression method</label>
+      <select id="compression-method">
+        <option value="duplicate-lines">Remove duplicate lines</option>
+        <option value="ai-summary">AI summary (Phi-3)</option>
+      </select>
+
+      <button id="compress-button">Compress text</button>
+    </section>
+
+    <section>
+      <h2>Compressed result</h2>
+      <p id="result-placeholder">Your compressed text will appear here.</p>
+      <div id="result" aria-live="polite"></div>
+      <p id="compression-stats"></p>
+    </section>
+  </main>
+  <script src="app.js" defer></script>
+</body>
+</html>
