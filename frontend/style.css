@@ -29,9 +29,19 @@ header h1 {
 }
 
 header p {
+  max-width: 620px;
   margin: 0;
   color: #aab6d0;
   font-size: 1.05rem;
+  line-height: 1.6;
+}
+
+header .eyebrow {
+  margin-bottom: 12px;
+  color: #9d91ff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
 }
 
 main {
@@ -127,16 +137,17 @@ h2 {
   font-size: 0.9rem;
 }
 
-@media (max-width: 700px) {
-  main {
-    grid-template-columns: 1fr;
+@media (max-width: 600px) {
+  body {
+    padding: 20px 14px;
   }
 
-  header {
-    padding-top: 32px;
+  header h1 {
+    font-size: 2rem;
   }
 
-  section {
-    padding: 20px;
+  header p {
+    font-size: 1rem;
   }
+
 }
