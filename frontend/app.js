@@ -7,6 +7,28 @@ const resultPlaceholder = document.getElementById("result-placeholder");
 const resultOutput = document.getElementById("result");
 const compressionStats = document.getElementById("compression-stats");
 
+
+const groqKeyPanel = document.getElementById("groq-key-panel");
+const groqApiKeyInput = document.getElementById("groq-api-key");
+
+function updateGroqKeyPanel() {
+  const isAiSummary = methodSelect.value === "ai-summary";
+  groqKeyPanel.hidden = !isAiSummary;
+}
+
+methodSelect.addEventListener("change", updateGroqKeyPanel);
+
+// Restore the key for this browser tab session, if one exists.
+groqApiKeyInput.value = sessionStorage.getItem("groq-api-key") || "";
+
+// Keep the key in session storage, not in your backend.
+groqApiKeyInput.addEventListener("input", () => {
+  sessionStorage.setItem("groq-api-key", groqApiKeyInput.value);
+});
+
+updateGroqKeyPanel();
+
+
 compressButton.addEventListener("click", async () => {
   const text = inputText.value.trim();
   const method = methodSelect.value;
@@ -27,16 +49,29 @@ compressButton.addEventListener("click", async () => {
   compressionStats.textContent = "";
 
   try {
-    const response = await fetch("/api/compress", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        text: text,
-        method: method
-      })
-    });
+    
+if (method === "ai-summary" && !groqApiKeyInput.value.trim()) {
+  resultPlaceholder.textContent = "Please enter your Groq API key first.";
+  return;
+}
+
+const headers = {
+  "Content-Type": "application/json"
+};
+
+if (method === "ai-summary") {
+  headers["X-Groq-API-Key"] = groqApiKeyInput.value.trim();
+}
+
+const response = await fetch("/api/compress", {
+  method: "POST",
+  headers: headers,
+  body: JSON.stringify({
+    text: text,
+    method: method
+  })
+});
+
 
     // Read the server response.
     const responseBody = await response.text();
