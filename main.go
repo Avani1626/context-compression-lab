@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+	 "io"
 )
 
 // CompressRequest is the JSON the client sends to our API.
@@ -115,9 +116,13 @@ func summarizeWithGroq(text, apiKey string) (string, error) {
 	defer httpResponse.Body.Close()
 
 	if httpResponse.StatusCode < 200 || httpResponse.StatusCode >= 300 {
-		// Do not log or return provider error bodies that could expose details.
-		return "", fmt.Errorf("Groq returned HTTP status %d", httpResponse.StatusCode)
-	}
+    errorBody, _ := io.ReadAll(io.LimitReader(httpResponse.Body, 4096))
+    return "", fmt.Errorf(
+        "Groq returned HTTP status %d: %s",
+        httpResponse.StatusCode,
+        strings.TrimSpace(string(errorBody)),
+    )
+}
 
 	var result groqChatResponse
 	if err := json.NewDecoder(httpResponse.Body).Decode(&result); err != nil {
