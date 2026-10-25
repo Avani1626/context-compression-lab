@@ -2,11 +2,11 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"fmt"
 )
 
 // Check that duplicate lines are removed
@@ -62,6 +62,7 @@ func TestCompressHandlerDefaultsToDuplicateLines(t *testing.T) {
 		t.Errorf("got compressed text %q, want %q", response.CompressedText, "apple\nbanana")
 	}
 }
+
 // Check that the API rejects a compression method it doesn't recognize.
 func TestCompressHandlerRejectsUnknownMethod(t *testing.T) {
 	// Send a request with a method our API doesn't support.
@@ -83,6 +84,7 @@ func TestCompressHandlerRejectsUnknownMethod(t *testing.T) {
 		t.Errorf("got status %d, want %d", recorder.Code, http.StatusBadRequest)
 	}
 }
+
 // Check that the API uses the summarizer when method is "ai-summary".
 func TestCompressHandlerUsesAISummary(t *testing.T) {
 	// Save the real summarizer so we can restore it after this test.
@@ -92,7 +94,10 @@ func TestCompressHandlerUsesAISummary(t *testing.T) {
 	}()
 
 	// Replace Ollama with a fake that always returns this short summary.
-	summarizeText = func(text string) (string, error) {
+	summarizeText = func(text, apiKey string) (string, error) {
+		if apiKey != "test-groq-key" {
+			t.Errorf("unexpected API key passed to summarizer")
+		}
 		return "Short version", nil
 	}
 
@@ -104,6 +109,7 @@ func TestCompressHandlerUsesAISummary(t *testing.T) {
 		"/api/compress",
 		strings.NewReader(body),
 	)
+	request.Header.Set("X-Groq-API-Key", "test-groq-key")
 	recorder := httptest.NewRecorder()
 
 	// Run the handler with our fake summarizer.
@@ -129,6 +135,7 @@ func TestCompressHandlerUsesAISummary(t *testing.T) {
 		t.Errorf("got method %q, want %q", response.Method, "ai-summary")
 	}
 }
+
 // Check that the API reports an error if the AI summarizer fails.
 func TestCompressHandlerReturnsErrorWhenAISummaryFails(t *testing.T) {
 	// Save the real summarizer and restore it when the test ends.
@@ -138,8 +145,8 @@ func TestCompressHandlerReturnsErrorWhenAISummaryFails(t *testing.T) {
 	}()
 
 	// Pretend the AI service failed.
-	summarizeText = func(text string) (string, error) {
-		return "", fmt.Errorf("simulated Ollama failure")
+	summarizeText = func(text, apiKey string) (string, error) {
+		return "", fmt.Errorf("simulated Groq failure")
 	}
 
 	// Request AI summarization.
@@ -150,6 +157,7 @@ func TestCompressHandlerReturnsErrorWhenAISummaryFails(t *testing.T) {
 		"/api/compress",
 		strings.NewReader(body),
 	)
+	request.Header.Set("X-Groq-API-Key", "test-groq-key")
 	recorder := httptest.NewRecorder()
 
 	// Run the handler with the failing fake summarizer.
@@ -160,6 +168,7 @@ func TestCompressHandlerReturnsErrorWhenAISummaryFails(t *testing.T) {
 		t.Errorf("got status %d, want %d", recorder.Code, http.StatusBadGateway)
 	}
 }
+
 // Check that the API rejects a request with blank text.
 func TestCompressHandlerRejectsEmptyText(t *testing.T) {
 	// Send text containing only spaces.
@@ -180,6 +189,7 @@ func TestCompressHandlerRejectsEmptyText(t *testing.T) {
 		t.Errorf("got status %d, want %d", recorder.Code, http.StatusBadRequest)
 	}
 }
+
 // Check that the API rejects malformed JSON.
 func TestCompressHandlerRejectsInvalidJSON(t *testing.T) {
 	// This is deliberately invalid JSON: the closing quote is missing.
@@ -200,6 +210,7 @@ func TestCompressHandlerRejectsInvalidJSON(t *testing.T) {
 		t.Errorf("got status %d, want %d", recorder.Code, http.StatusBadRequest)
 	}
 }
+
 // Check that the API rejects requests that are not POST.
 func TestCompressHandlerRejectsGET(t *testing.T) {
 	// Create a GET request instead of a POST request.
@@ -218,6 +229,7 @@ func TestCompressHandlerRejectsGET(t *testing.T) {
 		t.Errorf("got status %d, want %d", recorder.Code, http.StatusMethodNotAllowed)
 	}
 }
+
 // Check that the API counts Unicode characters correctly.
 func TestCompressHandlerCountsUnicodeCharacters(t *testing.T) {
 	// "é" is one visible character, even though it uses multiple UTF-8 bytes.

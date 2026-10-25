@@ -1,31 +1,30 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 	"unicode/utf8"
-	"os"
 )
 
 // CompressRequest is the JSON the client sends to our API.
 type CompressRequest struct {
-    Text   string `json:"text"`
-    Method string `json:"method"`
+	Text   string `json:"text"`
+	Method string `json:"method"`
 }
 
 // CompressResponse is the JSON our API sends back.
 type CompressResponse struct {
-	OriginalText      string  `json:"original_text"`
-	CompressedText    string  `json:"compressed_text"`
-	OriginalChars     int     `json:"original_chars"`
-	CompressedChars   int     `json:"compressed_chars"`
-	ReductionPercent  float64 `json:"reduction_percent"`
-	Method            string  `json:"method"`
+	OriginalText     string  `json:"original_text"`
+	CompressedText   string  `json:"compressed_text"`
+	OriginalChars    int     `json:"original_chars"`
+	CompressedChars  int     `json:"compressed_chars"`
+	ReductionPercent float64 `json:"reduction_percent"`
+	Method           string  `json:"method"`
 }
 
 // removeDuplicateLines is our current baseline compressor.
@@ -50,81 +49,94 @@ func removeDuplicateLines(text string) string {
 }
 
 // These fields describe the JSON request Ollama expects.
-type ollamaGenerateRequest struct {
-    Model  string `json:"model"`
-    Prompt string `json:"prompt"`
-    Stream bool   `json:"stream"`
+
+type groqChatRequest struct {
+	Model    string        `json:"model"`
+	Messages []groqMessage `json:"messages"`
 }
 
-// This field holds the generated text from Ollama's JSON response.
-type ollamaGenerateResponse struct {
-    Response string `json:"response"`
+type groqMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
 }
-// summarizeText is the summarizer used by the API handler.
-// It points to Ollama by default, but tests can temporarily replace it.
-var summarizeText = summarizeWithOllama
+
+type groqChatResponse struct {
+	Choices []struct {
+		Message groqMessage `json:"message"`
+	} `json:"choices"`
+}
+
+// summarizeText calls Groq using the key supplied for this request.
+var summarizeText func(text, apiKey string) (string, error) = summarizeWithGroq
+
+func summarizeWithGroq(text, apiKey string) (string, error) {
+	if strings.TrimSpace(apiKey) == "" {
+		return "", fmt.Errorf("Groq API key is required")
+	}
+
+	prompt := "Rewrite the text as a shorter summary. Keep its essential facts. Do not invent information. If the text is already concise, preserve it rather than making it longer.\n\nText:\n" + text
+
+	requestData := groqChatRequest{
+		Model: "llama-3.3-70b-versatile",
+		Messages: []groqMessage{
+			{
+				Role:    "system",
+				Content: "You summarize text accurately and concisely without inventing facts.",
+			},
+			{
+				Role:    "user",
+				Content: prompt,
+			},
+		},
+	}
+
+	jsonData, err := json.Marshal(requestData)
+	if err != nil {
+		return "", fmt.Errorf("create Groq request: %w", err)
+	}
+
+	request, err := http.NewRequest(
+		http.MethodPost,
+		"https://api.groq.com/openai/v1/chat/completions",
+		strings.NewReader(string(jsonData)),
+	)
+	if err != nil {
+		return "", fmt.Errorf("build Groq request: %w", err)
+	}
+
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Authorization", "Bearer "+apiKey)
+
+	client := &http.Client{Timeout: 60 * time.Second}
+	httpResponse, err := client.Do(request)
+	if err != nil {
+		return "", fmt.Errorf("send request to Groq")
+	}
+	defer httpResponse.Body.Close()
+
+	if httpResponse.StatusCode < 200 || httpResponse.StatusCode >= 300 {
+		// Do not log or return provider error bodies that could expose details.
+		return "", fmt.Errorf("Groq returned HTTP status %d", httpResponse.StatusCode)
+	}
+
+	var result groqChatResponse
+	if err := json.NewDecoder(httpResponse.Body).Decode(&result); err != nil {
+		return "", fmt.Errorf("read Groq response")
+	}
+
+	if len(result.Choices) == 0 {
+		return "", fmt.Errorf("Groq returned no summary")
+	}
+
+	summary := strings.TrimSpace(result.Choices[0].Message.Content)
+	if summary == "" {
+		return "", fmt.Errorf("Groq returned an empty summary")
+	}
+
+	return summary, nil
+}
+
 // summarizeWithOllama asks the local Phi-3 model to summarize text.
-func summarizeWithOllama(text string) (string, error) {
-    // Tell the model to make the text shorter without inventing facts.
-    prompt := "Rewrite the text as a shorter summary. Keep only its essential facts. Do not add an introduction, repeat the task, or include information not present in the text. If the text is already concise, preserve it rather than making it longer.\n\nText:\n" + text
-
-    // Prepare the request using our locally downloaded model.
-    requestData := ollamaGenerateRequest{
-        Model:  "phi3:latest",
-        Prompt: prompt,
-        Stream: false,
-    }
-
-    // Convert the Go request structure into JSON.
-    jsonData, err := json.Marshal(requestData)
-    if err != nil {
-        return "", fmt.Errorf("create Ollama request JSON: %w", err)
-    }
-
-    // Build an HTTP request to Ollama's local text-generation endpoint.
-    request, err := http.NewRequest(
-        http.MethodPost,
-        "http://localhost:11434/api/generate",
-        bytes.NewReader(jsonData),
-    )
-    if err != nil {
-        return "", fmt.Errorf("build Ollama request: %w", err)
-    }
-
-    // Tell Ollama that the request body is JSON.
-    request.Header.Set("Content-Type", "application/json")
-
-    // Allow up to two minutes for the local model to generate its summary.
-    client := &http.Client{
-        Timeout: 2 * time.Minute,
-    }
-
-    // Send the request and wait for Ollama's reply.
-    httpResponse, err := client.Do(request)
-    if err != nil {
-        return "", fmt.Errorf("send request to Ollama: %w", err)
-    }
-    defer httpResponse.Body.Close()
-
-    // Report an error if Ollama returned an unsuccessful HTTP status.
-    if httpResponse.StatusCode < 200 || httpResponse.StatusCode >= 300 {
-        return "", fmt.Errorf("Ollama returned HTTP status %s", httpResponse.Status)
-    }
-
-    // Decode Ollama's JSON reply into our response structure.
-    var result ollamaGenerateResponse
-    if err := json.NewDecoder(httpResponse.Body).Decode(&result); err != nil {
-        return "", fmt.Errorf("read Ollama response JSON: %w", err)
-    }
-
-    // Remove extra whitespace around the generated summary.
-    summary := strings.TrimSpace(result.Response)
-    if summary == "" {
-        return "", fmt.Errorf("Ollama returned an empty summary")
-    }
-
-    return summary, nil
-}
 
 // compressHandler handles POST requests to /api/compress.
 func compressHandler(w http.ResponseWriter, r *http.Request) {
@@ -149,38 +161,41 @@ func compressHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Use duplicate-line compression when no method was specified.
-method := request.Method
-if method == "" {
-    method = "duplicate-lines"
-}
+	method := request.Method
+	if method == "" {
+		method = "duplicate-lines"
+	}
 
-// Choose the compression method requested by the caller.
-var compressed string
+	// Choose the compression method requested by the caller.
+	var compressed string
 
-switch method {
-case "duplicate-lines":
-    compressed = removeDuplicateLines(request.Text)
+	switch method {
+	case "duplicate-lines":
+		compressed = removeDuplicateLines(request.Text)
 
-case "ai-summary":
-    // Ask Ollama to summarize the submitted text.
-    compressed, err = summarizeText(request.Text)
-    if err != nil {
-        // Log the technical error for us to debug.
-        log.Printf("Ollama summarization failed: %v", err)
+	case "ai-summary":
+		apiKey := strings.TrimSpace(r.Header.Get("X-Groq-API-Key"))
+		if apiKey == "" {
+			http.Error(w, "Groq API key is required for AI summary", http.StatusBadRequest)
+			return
+		}
 
-        // Tell the API caller that the AI service failed.
-        http.Error(w, "Could not generate AI summary", http.StatusBadGateway)
-        return
-    }
+		compressed, err = summarizeText(request.Text, apiKey)
+		if err != nil {
+			// Log only a generic message; never log the API key or provider details.
+			log.Printf("Groq summarization failed")
+			http.Error(w, "Could not generate AI summary. Check your API key and try again.", http.StatusBadGateway)
+			return
+		}
 
-default:
-    http.Error(w, "Unknown compression method", http.StatusBadRequest)
-    return
-}
+	default:
+		http.Error(w, "Unknown compression method", http.StatusBadRequest)
+		return
+	}
 
-// Count Unicode runes so these values match the "chars" field names.
-originalChars := utf8.RuneCountInString(request.Text)
-compressedChars := utf8.RuneCountInString(compressed)
+	// Count Unicode runes so these values match the "chars" field names.
+	originalChars := utf8.RuneCountInString(request.Text)
+	compressedChars := utf8.RuneCountInString(compressed)
 
 	reduction := 0.0
 	if originalChars > 0 {
@@ -195,7 +210,7 @@ compressedChars := utf8.RuneCountInString(compressed)
 		OriginalChars:    originalChars,
 		CompressedChars:  compressedChars,
 		ReductionPercent: reduction,
-		Method: method,
+		Method:           method,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -205,14 +220,14 @@ compressedChars := utf8.RuneCountInString(compressed)
 }
 
 func main() {
-    http.HandleFunc("/api/compress", compressHandler)
-    http.Handle("/", http.FileServer(http.Dir("./frontend")))
+	http.HandleFunc("/api/compress", compressHandler)
+	http.Handle("/", http.FileServer(http.Dir("./frontend")))
 
-    port := os.Getenv("PORT")
-    if port == "" {
-        port = "8080"
-    }
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
 
-    fmt.Printf("Context Compression API running on port %s\n", port)
-    log.Fatal(http.ListenAndServe(":"+port, nil))
+	fmt.Printf("Context Compression API running on port %s\n", port)
+	log.Fatal(http.ListenAndServe(":"+port, nil))
 }
