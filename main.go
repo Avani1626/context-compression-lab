@@ -77,7 +77,7 @@ func summarizeWithGroq(text, apiKey string) (string, error) {
 	prompt := "Rewrite the text as a shorter summary. Keep its essential facts. Do not invent information. If the text is already concise, preserve it rather than making it longer.\n\nText:\n" + text
 
 	requestData := groqChatRequest{
-		Model: "llama-3.3-70b-versatile",
+		Model: "openai/gpt-oss-120b",
 		Messages: []groqMessage{
 			{
 				Role:    "system",
