@@ -26,11 +26,28 @@
         rows="10"
       ></textarea>
 
-      <label for="compression-method">Compression method</label>
-      <select id="compression-method">
-        <option value="duplicate-lines">Remove duplicate lines</option>
-        <option value="ai-summary">AI summary (Phi-3)</option>
-      </select>
+      
+<label for="compression-method">Compression method</label>
+<select id="compression-method">
+  <option value="duplicate-lines">Remove duplicate lines</option>
+  <option value="ai-summary">AI summary (Groq)</option>
+</select>
+
+<div id="groq-key-panel" hidden>
+  <label for="groq-api-key">Your Groq API key</label>
+  <input
+    id="groq-api-key"
+    type="password"
+    placeholder="Paste your Groq API key"
+    autocomplete="off"
+    spellcheck="false"
+  />
+  <p class="key-notice">
+    Your key is sent to this app's backend for AI requests.
+    It should not be stored on the server.
+  </p>
+</div>
+
 
       <button id="compress-button">Compress text</button>
     </section>
