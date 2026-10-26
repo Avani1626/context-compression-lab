@@ -301,7 +301,37 @@ func rateLimitMiddleware(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 	})
 }
+
+// cleanupRateLimitEntries periodically removes expired client entries.
+func cleanupRateLimitEntries() {
+	// Run cleanup once every minute.
+	ticker := time.NewTicker(time.Minute)
+
+	// Stop the ticker if this function ever returns.
+	defer ticker.Stop()
+
+	// Keep cleaning while the server is running.
+	for range ticker.C {
+		// Get the current time for checking expired entries.
+		now := time.Now()
+
+		// Lock the shared map while deleting entries.
+		rateLimitMu.Lock()
+
+		// Check each client's rate-limit entry.
+		for clientIP, entry := range rateLimitClients {
+			// Remove entries whose one-minute window has expired.
+			if now.Sub(entry.windowStart) >= time.Minute {
+				delete(rateLimitClients, clientIP)
+			}
+		}
+
+		// Allow other requests to access the map again.
+		rateLimitMu.Unlock()
+	}
+}
 func main() {
+	go cleanupRateLimitEntries()
 
 	http.Handle("/api/compress", rateLimitMiddleware(http.HandlerFunc(compressHandler)))
 	http.Handle("/", http.FileServer(http.Dir("./frontend")))
