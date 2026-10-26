@@ -61,7 +61,37 @@ func TestCompressHandlerDefaultsToDuplicateLines(t *testing.T) {
 	if response.CompressedText != "apple\nbanana" {
 		t.Errorf("got compressed text %q, want %q", response.CompressedText, "apple\nbanana")
 	}
-}
+
+
+
+        // Check that the original text has a positive token count.
+        if response.OriginalTokens <= 0 {
+                t.Errorf("got original tokens %d, want more than 0", response.OriginalTokens)
+        }
+
+        // Check that the compressed text has a positive token count.
+        if response.CompressedTokens <= 0 {
+                t.Errorf("got compressed tokens %d, want more than 0", response.CompressedTokens)
+        }
+
+        // Check that tokens saved equals original tokens minus compressed tokens.
+        wantTokensSaved := response.OriginalTokens - response.CompressedTokens
+        if response.TokensSaved != wantTokensSaved {
+                t.Errorf("got tokens saved %d, want %d", response.TokensSaved, wantTokensSaved)
+        }
+
+        // Check that the API identifies the tokenizer and its estimate.
+        if response.Tokenizer != "o200k_base (estimate for gpt-oss-120b)" {
+                t.Errorf("got tokenizer %q, want the o200k_base estimate label", response.Tokenizer)
+        }
+
+        // Check that the reduction percentage matches the returned token counts.
+        wantReduction := float64(wantTokensSaved) / float64(response.OriginalTokens) * 100
+        if response.TokenReductionPercent != wantReduction {
+                t.Errorf("got token reduction %.2f, want %.2f", response.TokenReductionPercent, wantReduction)
+        }
+	}
+
 
 // Check that the API rejects a compression method it doesn't recognize.
 func TestCompressHandlerRejectsUnknownMethod(t *testing.T) {

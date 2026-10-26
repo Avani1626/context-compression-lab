@@ -44,13 +44,19 @@ type CompressRequest struct {
 }
 
 // CompressResponse is the JSON our API sends back.
+
 type CompressResponse struct {
-	OriginalText     string  `json:"original_text"`
-	CompressedText   string  `json:"compressed_text"`
-	OriginalChars    int     `json:"original_chars"`
-	CompressedChars  int     `json:"compressed_chars"`
-	ReductionPercent float64 `json:"reduction_percent"`
-	Method           string  `json:"method"`
+	OriginalText          string  `json:"original_text"`
+	CompressedText        string  `json:"compressed_text"`
+	OriginalChars         int     `json:"original_chars"`
+	CompressedChars       int     `json:"compressed_chars"`
+	ReductionPercent      float64 `json:"reduction_percent"`
+	OriginalTokens        int     `json:"original_tokens"`
+	CompressedTokens      int     `json:"compressed_tokens"`
+	TokensSaved           int     `json:"tokens_saved"`
+	TokenReductionPercent float64 `json:"token_reduction_percent"`
+	Tokenizer             string  `json:"tokenizer"`
+	Method                string  `json:"method"`
 }
 
 // removeDuplicateLines is our current baseline compressor.
@@ -246,6 +252,32 @@ func compressHandler(w http.ResponseWriter, r *http.Request) {
 	originalChars := utf8.RuneCountInString(request.Text)
 	compressedChars := utf8.RuneCountInString(compressed)
 
+	// Estimate the number of tokens in the original text.
+	originalTokens, err := countEstimatedTokens(request.Text)
+	if err != nil {
+		log.Printf("Could not count original tokens: %v", err)
+		http.Error(w, "Could not estimate token count", http.StatusInternalServerError)
+		return
+	}
+
+	// Estimate the number of tokens in the compressed text.
+	compressedTokens, err := countEstimatedTokens(compressed)
+	if err != nil {
+		log.Printf("Could not count compressed tokens: %v", err)
+		http.Error(w, "Could not estimate token count", http.StatusInternalServerError)
+		return
+	}
+
+	// Calculate how many tokens the compression saved.
+	tokensSaved := originalTokens - compressedTokens
+
+	// Calculate the percentage of tokens reduced.
+	tokenReduction := 0.0
+	if originalTokens > 0 {
+		tokenReduction = float64(tokensSaved) /
+			float64(originalTokens) * 100
+	}
+
 	reduction := 0.0
 	if originalChars > 0 {
 		reduction = float64(originalChars-compressedChars) /
@@ -254,12 +286,17 @@ func compressHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Prepare the response as JSON.
 	response := CompressResponse{
-		OriginalText:     request.Text,
-		CompressedText:   compressed,
-		OriginalChars:    originalChars,
-		CompressedChars:  compressedChars,
-		ReductionPercent: reduction,
-		Method:           method,
+		OriginalText:          request.Text,
+		CompressedText:        compressed,
+		OriginalChars:         originalChars,
+		CompressedChars:       compressedChars,
+		ReductionPercent:      reduction,
+		Method:                method,
+		OriginalTokens:        originalTokens,
+		CompressedTokens:      compressedTokens,
+		TokensSaved:           tokensSaved,
+		TokenReductionPercent: tokenReduction,
+		Tokenizer:             "o200k_base (estimate for gpt-oss-120b)",
 	}
 
 	w.Header().Set("Content-Type", "application/json")
