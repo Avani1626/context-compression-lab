@@ -2,15 +2,16 @@ package main
 
 import (
 	"encoding/json"
+	"errors" // Lets us identify specific errors.
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
 	"strings"
+	"sync" // Provides a mutex to safely share rate-limit data between requests.
 	"time"
 	"unicode/utf8"
-	 "io"
-	 "errors" // Lets us identify specific errors.
 )
 
 // CompressRequest is the JSON the client sends to our API.
@@ -117,13 +118,13 @@ func summarizeWithGroq(text, apiKey string) (string, error) {
 	defer httpResponse.Body.Close()
 
 	if httpResponse.StatusCode < 200 || httpResponse.StatusCode >= 300 {
-    errorBody, _ := io.ReadAll(io.LimitReader(httpResponse.Body, 4096))
-    return "", fmt.Errorf(
-        "Groq returned HTTP status %d: %s",
-        httpResponse.StatusCode,
-        strings.TrimSpace(string(errorBody)),
-    )
-}
+		errorBody, _ := io.ReadAll(io.LimitReader(httpResponse.Body, 4096))
+		return "", fmt.Errorf(
+			"Groq returned HTTP status %d: %s",
+			httpResponse.StatusCode,
+			strings.TrimSpace(string(errorBody)),
+		)
+	}
 
 	var result groqChatResponse
 	if err := json.NewDecoder(httpResponse.Body).Decode(&result); err != nil {
@@ -154,43 +155,43 @@ func compressHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Decode the JSON request body into our request struct.
 	// Limit request bodies to 1 MiB to prevent oversized requests.
-r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 
-// Decode the JSON request body into our request struct.
-// Limit the request body to 1 MiB (protects against huge requests).
-r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+	// Decode the JSON request body into our request struct.
+	// Limit the request body to 1 MiB (protects against huge requests).
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 
-// Create a variable to hold the incoming JSON data.
-var request CompressRequest
+	// Create a variable to hold the incoming JSON data.
+	var request CompressRequest
 
-// Read the JSON and put its values into request.
-err := json.NewDecoder(r.Body).Decode(&request)
+	// Read the JSON and put its values into request.
+	err := json.NewDecoder(r.Body).Decode(&request)
 
-// Check whether reading the JSON failed.
-if err != nil {
-    // Check whether the request was too large.
-    var maxBytesError *http.MaxBytesError
-    if errors.As(err, &maxBytesError) {
-        // Return HTTP 413 when the request exceeds 1 MiB.
-        http.Error(w, "Request body too large", http.StatusRequestEntityTooLarge)
-        return
-    }
+	// Check whether reading the JSON failed.
+	if err != nil {
+		// Check whether the request was too large.
+		var maxBytesError *http.MaxBytesError
+		if errors.As(err, &maxBytesError) {
+			// Return HTTP 413 when the request exceeds 1 MiB.
+			http.Error(w, "Request body too large", http.StatusRequestEntityTooLarge)
+			return
+		}
 
-    // Return HTTP 400 when the JSON is invalid.
-    http.Error(w, "Invalid JSON body", http.StatusBadRequest)
-    return
-}
+		// Return HTTP 400 when the JSON is invalid.
+		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
+		return
+	}
 
-// Reject empty text.
-if strings.TrimSpace(request.Text) == "" {
-    http.Error(w, "Text cannot be empty", http.StatusBadRequest)
-    return
-}
-// Use duplicate-line compression when no method was specified.
-method := request.Method
-if method == "" {
-    method = "duplicate-lines"
-}
+	// Reject empty text.
+	if strings.TrimSpace(request.Text) == "" {
+		http.Error(w, "Text cannot be empty", http.StatusBadRequest)
+		return
+	}
+	// Use duplicate-line compression when no method was specified.
+	method := request.Method
+	if method == "" {
+		method = "duplicate-lines"
+	}
 	// Choose the compression method requested by the caller.
 	var compressed string
 
@@ -244,8 +245,65 @@ if method == "" {
 	}
 }
 
+type rateLimitEntry struct {
+	count       int
+	windowStart time.Time
+}
+
+// rateLimitMu protects the shared map from concurrent access.
+var rateLimitMu sync.Mutex
+
+// rateLimitClients stores request counts for each client IP address.
+var rateLimitClients = make(map[string]rateLimitEntry)
+
+// rateLimitMiddleware limits each IP address to 30 requests per minute.
+func rateLimitMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Read the client's IP address from the network connection.
+		clientIP := r.RemoteAddr
+
+		// Check and update the rate-limit count while holding the mutex.
+		limited := func() bool {
+			rateLimitMu.Lock()
+			defer rateLimitMu.Unlock()
+
+			// Get the current time for checking the one-minute window.
+			now := time.Now()
+
+			// Look up this client's existing rate-limit entry.
+			entry := rateLimitClients[clientIP]
+
+			// Reset the count if this is a new or expired one-minute window.
+			if entry.windowStart.IsZero() || now.Sub(entry.windowStart) >= time.Minute {
+				entry = rateLimitEntry{windowStart: now}
+			}
+
+			// Reject this request if the client has reached the limit.
+			if entry.count >= 30 {
+				return true
+			}
+
+			// Count this request and save the updated entry.
+			entry.count++
+			rateLimitClients[clientIP] = entry
+
+			return false
+		}()
+
+		// Return HTTP 429 if the client exceeded the limit.
+		if limited {
+			w.Header().Set("Retry-After", "60")
+			http.Error(w, "Rate limit exceeded. Try again in one minute.", http.StatusTooManyRequests)
+			return
+		}
+
+		// Run the original handler after the rate-limit check.
+		next.ServeHTTP(w, r)
+	})
+}
 func main() {
-	http.HandleFunc("/api/compress", compressHandler)
+
+	http.Handle("/api/compress", rateLimitMiddleware(http.HandlerFunc(compressHandler)))
 	http.Handle("/", http.FileServer(http.Dir("./frontend")))
 
 	port := os.Getenv("PORT")

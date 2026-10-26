@@ -288,3 +288,39 @@ func TestCompressHandlerRejectsOversizedRequest(t *testing.T) {
 		)
 	}
 }
+
+func TestRateLimitMiddleware(t *testing.T) {
+	// Reset the shared rate-limit data so this test starts fresh.
+	rateLimitMu.Lock()
+	rateLimitClients = make(map[string]rateLimitEntry)
+	rateLimitMu.Unlock()
+
+	// Create a test handler that returns HTTP 200 for allowed requests.
+	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	// Put the rate limiter in front of the test handler.
+	handler := rateLimitMiddleware(nextHandler)
+
+	// Send 31 requests from the same simulated client IP.
+	for i := 1; i <= 31; i++ {
+		request := httptest.NewRequest(http.MethodGet, "/", nil)
+
+		// Give every request the same IP so they share one counter.
+		request.RemoteAddr = "192.0.2.1:12345"
+
+		// Capture the HTTP response without starting a real server.
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, request)
+
+		// The first 30 requests should pass; the 31st should be rejected.
+		if i <= 30 && recorder.Code != http.StatusOK {
+			t.Errorf("request %d: got status %d, want %d", i, recorder.Code, http.StatusOK)
+		}
+
+		if i == 31 && recorder.Code != http.StatusTooManyRequests {
+			t.Errorf("request %d: got status %d, want %d", i, recorder.Code, http.StatusTooManyRequests)
+		}
+	}
+}
