@@ -254,3 +254,37 @@ func TestCompressHandlerCountsUnicodeCharacters(t *testing.T) {
 		t.Errorf("got original_chars %d, want 4", response.OriginalChars)
 	}
 }
+
+func TestCompressHandlerRejectsOversizedRequest(t *testing.T) {
+	// Create text larger than the 1 MiB request limit.
+	largeText := strings.Repeat("a", (1<<20)+1)
+
+	// Put the large text into a valid JSON request.
+	body, err := json.Marshal(CompressRequest{
+		Text:   largeText,
+		Method: "duplicate-lines",
+	})
+	if err != nil {
+		t.Fatalf("could not create request body: %v", err)
+	}
+
+	// Send the oversized request to the handler.
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/api/compress",
+		strings.NewReader(string(body)),
+	)
+	recorder := httptest.NewRecorder()
+
+	// Run the handler.
+	compressHandler(recorder, request)
+
+	// Oversized requests should receive HTTP 413.
+	if recorder.Code != http.StatusRequestEntityTooLarge {
+		t.Errorf(
+			"got status %d, want %d",
+			recorder.Code,
+			http.StatusRequestEntityTooLarge,
+		)
+	}
+}

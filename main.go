@@ -10,6 +10,7 @@ import (
 	"time"
 	"unicode/utf8"
 	 "io"
+	 "errors" // Lets us identify specific errors.
 )
 
 // CompressRequest is the JSON the client sends to our API.
@@ -152,25 +153,44 @@ func compressHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Decode the JSON request body into our request struct.
-	var request CompressRequest
-	err := json.NewDecoder(r.Body).Decode(&request)
-	if err != nil {
-		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
-		return
-	}
+	// Limit request bodies to 1 MiB to prevent oversized requests.
+r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 
-	// Reject empty text so the API doesn't process a blank request.
-	if strings.TrimSpace(request.Text) == "" {
-		http.Error(w, "Text cannot be empty", http.StatusBadRequest)
-		return
-	}
+// Decode the JSON request body into our request struct.
+// Limit the request body to 1 MiB (protects against huge requests).
+r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 
-	// Use duplicate-line compression when no method was specified.
-	method := request.Method
-	if method == "" {
-		method = "duplicate-lines"
-	}
+// Create a variable to hold the incoming JSON data.
+var request CompressRequest
 
+// Read the JSON and put its values into request.
+err := json.NewDecoder(r.Body).Decode(&request)
+
+// Check whether reading the JSON failed.
+if err != nil {
+    // Check whether the request was too large.
+    var maxBytesError *http.MaxBytesError
+    if errors.As(err, &maxBytesError) {
+        // Return HTTP 413 when the request exceeds 1 MiB.
+        http.Error(w, "Request body too large", http.StatusRequestEntityTooLarge)
+        return
+    }
+
+    // Return HTTP 400 when the JSON is invalid.
+    http.Error(w, "Invalid JSON body", http.StatusBadRequest)
+    return
+}
+
+// Reject empty text.
+if strings.TrimSpace(request.Text) == "" {
+    http.Error(w, "Text cannot be empty", http.StatusBadRequest)
+    return
+}
+// Use duplicate-line compression when no method was specified.
+method := request.Method
+if method == "" {
+    method = "duplicate-lines"
+}
 	// Choose the compression method requested by the caller.
 	var compressed string
 
