@@ -324,3 +324,31 @@ func TestRateLimitMiddleware(t *testing.T) {
 		}
 	}
 }
+
+func TestCountEstimatedTokens(t *testing.T) {
+	// Count tokens in a normal sentence.
+	count, err := countEstimatedTokens("Hello, world!")
+
+	// Fail the test if token counting returned an error.
+	if err != nil {
+		t.Fatalf("countEstimatedTokens returned an error: %v", err)
+	}
+
+	// A non-empty sentence should produce at least one token.
+	if count <= 0 {
+		t.Errorf("got %d tokens, want a count greater than zero", count)
+	}
+
+	// Count tokens in an empty string.
+	emptyCount, err := countEstimatedTokens("")
+
+	// Fail the test if counting empty text returned an error.
+	if err != nil {
+		t.Fatalf("countEstimatedTokens returned an error for empty text: %v", err)
+	}
+
+	// Empty text should contain zero tokens.
+	if emptyCount != 0 {
+		t.Errorf("got %d tokens for empty text, want 0", emptyCount)
+	}
+}

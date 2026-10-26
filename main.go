@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors" // Lets us identify specific errors.
 	"fmt"
+	"github.com/tiktoken-go/tokenizer"
 	"io"
 	"log"
 	"net/http"
@@ -13,6 +14,28 @@ import (
 	"time"
 	"unicode/utf8"
 )
+
+// countEstimatedTokens counts text tokens using the o200k_base encoding.
+func countEstimatedTokens(text string) (int, error) {
+	// Get the tokenizer for the o200k_base encoding.
+	codec, err := tokenizer.Get(tokenizer.O200kBase)
+
+	// Stop if the tokenizer could not be loaded.
+	if err != nil {
+		return 0, err
+	}
+
+	// Count the tokens in the provided text.
+	count, err := codec.Count(text)
+
+	// Return an error if token counting failed.
+	if err != nil {
+		return 0, err
+	}
+
+	// Return the estimated token count.
+	return count, nil
+}
 
 // CompressRequest is the JSON the client sends to our API.
 type CompressRequest struct {
