@@ -135,6 +135,7 @@ h2 {
   margin-top: 20px;
   color: #aab6d0;
   font-size: 0.9rem;
+  white-space: pre-line;
 }
 
 @media (max-width: 600px) {

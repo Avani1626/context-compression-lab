@@ -92,10 +92,17 @@ const response = await fetch("/api/compress", {
     resultOutput.textContent = data.compressed_text;
 
     // Display the character counts and reduction percentage.
+
+    // Display the character counts and reduction percentage.
     compressionStats.textContent =
       `Original: ${data.original_chars} characters · ` +
       `Result: ${data.compressed_chars} characters · ` +
-      `Reduction: ${data.reduction_percent.toFixed(1)}%`;
+      `Reduction: ${data.reduction_percent.toFixed(1)}%\n` +
+      `Tokens: ${data.original_tokens} → ${data.compressed_tokens} · ` +
+      `Saved: ${data.tokens_saved} tokens · ` +
+      `Token reduction: ${data.token_reduction_percent.toFixed(1)}%\n` +
+      `Tokenizer: ${data.tokenizer}`;
+
   } catch (error) {
     resultPlaceholder.textContent =
       `Couldn't compress the text: ${error.message}`;
