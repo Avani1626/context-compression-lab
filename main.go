@@ -258,7 +258,7 @@ func compressHandler(w http.ResponseWriter, r *http.Request) {
 		compressed, err = summarizeText(request.Text, apiKey)
 		if err != nil {
 			// Log only a generic message; never log the API key or provider details.
-			log.Printf("Groq summarization failed: %v", err)
+			log.Printf("Groq summarization failed")
 			http.Error(w, "Could not generate AI summary. Check your API key and try again.", http.StatusBadGateway)
 			return
 		}
