@@ -24,6 +24,8 @@ var (
 
 	// Stores any error encountered during initialization.
 	tokenizerErr error
+
+	tokenizerMu sync.Mutex
 )
 
 // countEstimatedTokens counts text tokens using the o200k_base encoding.
@@ -39,6 +41,11 @@ func countEstimatedTokens(text string) (int, error) {
 	}
 
 	// Count the tokens using the reusable tokenizer.
+	// Allow only one goroutine at a time to use the shared tokenizer.
+	tokenizerMu.Lock()
+	defer tokenizerMu.Unlock()
+
+	// Count tokens using the shared tokenizer.
 	count, err := tokenCodec.Count(text)
 
 	// Return an error if token counting failed.
