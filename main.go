@@ -15,18 +15,31 @@ import (
 	"unicode/utf8"
 )
 
+var (
+	// Ensures the tokenizer is initialized only once.
+	tokenizerOnce sync.Once
+
+	// Stores the tokenizer for reuse.
+	tokenCodec tokenizer.Codec
+
+	// Stores any error encountered during initialization.
+	tokenizerErr error
+)
+
 // countEstimatedTokens counts text tokens using the o200k_base encoding.
 func countEstimatedTokens(text string) (int, error) {
-	// Get the tokenizer for the o200k_base encoding.
-	codec, err := tokenizer.Get(tokenizer.O200kBase)
+	// Initialize the tokenizer only on the first call.
+	tokenizerOnce.Do(func() {
+		tokenCodec, tokenizerErr = tokenizer.Get(tokenizer.O200kBase)
+	})
 
 	// Stop if the tokenizer could not be loaded.
-	if err != nil {
-		return 0, err
+	if tokenizerErr != nil {
+		return 0, tokenizerErr
 	}
 
-	// Count the tokens in the provided text.
-	count, err := codec.Count(text)
+	// Count the tokens using the reusable tokenizer.
+	count, err := tokenCodec.Count(text)
 
 	// Return an error if token counting failed.
 	if err != nil {
