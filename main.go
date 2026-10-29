@@ -79,6 +79,14 @@ type CompressResponse struct {
 	Method                string  `json:"method"`
 }
 
+// AgentAction represents one action performed by an AI agent.
+type AgentAction struct {
+	Tool       string `json:"tool"`
+	Input      string `json:"input"`
+	Result     string `json:"result"`
+	RetryCount int    `json:"retry_count"`
+}
+
 // removeDuplicateLines is our current baseline compressor.
 // Later, we'll replace or supplement it with an LLM-generated summary.
 func removeDuplicateLines(text string) string {
