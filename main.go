@@ -110,6 +110,28 @@ func removeDuplicateLines(text string) string {
 
 // These fields describe the JSON request Ollama expects.
 
+// compressAgentActions combines consecutive identical agent actions.
+func compressAgentActions(actions []AgentAction) []AgentAction {
+	compressed := make([]AgentAction, 0, len(actions))
+
+	for _, action := range actions {
+		if len(compressed) > 0 {
+			last := &compressed[len(compressed)-1]
+
+			if last.Tool == action.Tool &&
+				last.Input == action.Input &&
+				last.Result == action.Result {
+				last.RetryCount++
+				continue
+			}
+		}
+
+		compressed = append(compressed, action)
+	}
+
+	return compressed
+}
+
 type groqChatRequest struct {
 	Model    string        `json:"model"`
 	Messages []groqMessage `json:"messages"`

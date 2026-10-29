@@ -24,6 +24,73 @@ func TestRemoveDuplicateLines(t *testing.T) {
 	}
 }
 
+func TestCompressAgentActionsCountsRetries(t *testing.T) {
+	actions := []AgentAction{
+		{
+			Tool:   "search_order",
+			Input:  "order_id=5821",
+			Result: "Order not found",
+		},
+		{
+			Tool:   "search_order",
+			Input:  "order_id=5821",
+			Result: "Order not found",
+		},
+		{
+			Tool:   "search_order",
+			Input:  "order_id=5821",
+			Result: "Order not found",
+		},
+	}
+
+	got := compressAgentActions(actions)
+
+	if len(got) != 1 {
+		t.Fatalf("got %d actions, want 1", len(got))
+	}
+
+	if got[0].RetryCount != 2 {
+		t.Errorf("got retry count %d, want 2", got[0].RetryCount)
+	}
+}
+
+func TestCompressAgentActionsPreservesDifferentActions(t *testing.T) {
+	actions := []AgentAction{
+		{
+			Tool:   "search_order",
+			Input:  "order_id=5821",
+			Result: "Order not found",
+		},
+		{
+			Tool:   "lookup_customer",
+			Input:  "customer_id=42",
+			Result: "Customer found",
+		},
+	}
+
+	got := compressAgentActions(actions)
+
+	if len(got) != 2 {
+		t.Fatalf("got %d actions, want 2", len(got))
+	}
+
+	if got[0].Tool != "search_order" {
+		t.Errorf("first action tool = %q, want search_order", got[0].Tool)
+	}
+
+	if got[1].Tool != "lookup_customer" {
+		t.Errorf("second action tool = %q, want lookup_customer", got[1].Tool)
+	}
+}
+
+func TestCompressAgentActionsHandlesEmptyInput(t *testing.T) {
+	got := compressAgentActions(nil)
+
+	if len(got) != 0 {
+		t.Fatalf("got %d actions, want 0", len(got))
+	}
+}
+
 // Check that the API uses duplicate-lines when
 // the request doesn't specify a compression method.
 func TestCompressHandlerDefaultsToDuplicateLines(t *testing.T) {
