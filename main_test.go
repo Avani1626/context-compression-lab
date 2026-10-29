@@ -447,3 +447,80 @@ func TestCountEstimatedTokens(t *testing.T) {
 		t.Errorf("got %d tokens for empty text, want 0", emptyCount)
 	}
 }
+
+func TestCompressTraceHandlerCompressesRepeatedActions(t *testing.T) {
+	body := `{
+        "actions": [
+            {"tool":"search_order","input":"order_id=5821","result":"Order not found"},
+            {"tool":"search_order","input":"order_id=5821","result":"Order not found"},
+            {"tool":"search_order","input":"order_id=5821","result":"Order not found"}
+        ]
+    }`
+
+	req := httptest.NewRequest(http.MethodPost, "/api/compress-trace", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	compressTraceHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("got status %d, want %d; body: %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var response struct {
+		Actions []AgentAction `json:"actions"`
+	}
+
+	if err := json.NewDecoder(rec.Body).Decode(&response); err != nil {
+		t.Fatalf("could not decode response: %v", err)
+	}
+
+	if len(response.Actions) != 1 {
+		t.Fatalf("got %d actions, want 1", len(response.Actions))
+	}
+
+	if response.Actions[0].RetryCount != 2 {
+		t.Errorf("got retry count %d, want 2", response.Actions[0].RetryCount)
+	}
+}
+
+func TestCompressTraceHandlerRejectsGet(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/api/compress-trace", nil)
+	rec := httptest.NewRecorder()
+
+	compressTraceHandler(rec, req)
+
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Errorf("got status %d, want %d", rec.Code, http.StatusMethodNotAllowed)
+	}
+}
+
+func TestCompressTraceHandlerRejectsMissingActions(t *testing.T) {
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/compress-trace",
+		strings.NewReader(`{}`),
+	)
+	rec := httptest.NewRecorder()
+
+	compressTraceHandler(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("got status %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+func TestCompressTraceHandlerRejectsTrailingJSON(t *testing.T) {
+	body := `{"actions":[]} {"unexpected":true}`
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/compress-trace",
+		strings.NewReader(body),
+	)
+	rec := httptest.NewRecorder()
+
+	compressTraceHandler(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("got status %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}

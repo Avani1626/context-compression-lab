@@ -87,6 +87,11 @@ type AgentAction struct {
 	RetryCount int    `json:"retry_count"`
 }
 
+// CompressTraceRequest represents a request to compress agent actions.
+type CompressTraceRequest struct {
+	Actions []AgentAction `json:"actions"`
+}
+
 // removeDuplicateLines is our current baseline compressor.
 // Later, we'll replace or supplement it with an LLM-generated summary.
 func removeDuplicateLines(text string) string {
@@ -355,6 +360,60 @@ func compressHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// compressTraceHandler handles POST requests to /api/compress-trace.
+func compressTraceHandler(w http.ResponseWriter, r *http.Request) {
+	// Only allow POST requests.
+	if r.Method != http.MethodPost {
+		http.Error(w, "Use POST for this endpoint", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Limit the request body to 1 MiB.
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+
+	// Decode the incoming JSON into our request struct.
+	var request CompressTraceRequest
+	decoder := json.NewDecoder(r.Body)
+
+	if err := decoder.Decode(&request); err != nil {
+		var maxBytesError *http.MaxBytesError
+		if errors.As(err, &maxBytesError) {
+			http.Error(w, "Request body too large", http.StatusRequestEntityTooLarge)
+			return
+		}
+
+		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
+		return
+	}
+
+	// Reject a second JSON value or any trailing non-whitespace content.
+	var extra json.RawMessage
+	if err := decoder.Decode(&extra); err != io.EOF {
+		http.Error(w, "Request must contain only one JSON value", http.StatusBadRequest)
+		return
+	}
+	// Require an actions array. An empty array is allowed.
+	if request.Actions == nil {
+		http.Error(w, "Actions must be provided as an array", http.StatusBadRequest)
+		return
+	}
+
+	// Compress consecutive identical actions.
+	compressed := compressAgentActions(request.Actions)
+
+	// Return the compressed actions as JSON.
+	response := struct {
+		Actions []AgentAction `json:"actions"`
+	}{
+		Actions: compressed,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		log.Printf("Could not encode trace response: %v", err)
+	}
+}
+
 type rateLimitEntry struct {
 	count       int
 	windowStart time.Time
@@ -444,6 +503,7 @@ func main() {
 	go cleanupRateLimitEntries()
 
 	http.Handle("/api/compress", rateLimitMiddleware(http.HandlerFunc(compressHandler)))
+	http.Handle("/api/compress-trace", rateLimitMiddleware(http.HandlerFunc(compressTraceHandler)))
 	http.Handle("/", http.FileServer(http.Dir("./frontend")))
 
 	port := os.Getenv("PORT")
